@@ -1,7 +1,10 @@
 from dataclasses import dataclass
 from pathlib import Path
-import os, yaml
+import os
+
+import yaml
 from dotenv import load_dotenv
+
 
 @dataclass
 class RetryCfg:
@@ -11,7 +14,8 @@ class RetryCfg:
     Attributes:
         attempts: Number of retry attempts before giving up.
         delay_ms: Initial delay between retries, in milliseconds.
-        backoff_multiplier: Multiplier applied to delay on each retry (exponential backoff).
+        backoff_multiplier: Multiplier applied to delay on each retry
+            (exponential backoff).
         retry_on_status: HTTP status codes that should trigger a retry.
     """
     attempts: int
@@ -19,14 +23,17 @@ class RetryCfg:
     backoff_multiplier: float
     retry_on_status: list[int]
 
+
 @dataclass
 class AppCfg:
     """
-    Top-level application configuration loaded from config.yaml and optionally overridden by .env.
+    Top-level application configuration loaded from config.yaml and
+    optionally overridden by .env.
 
     Attributes:
         base_url: Base URL for all HTTP requests.
-        timeout: Default timeout (seconds) for requests unless explicitly overridden.
+        timeout: Default timeout (seconds) for requests unless explicitly
+            overridden.
         verify_ssl: Whether to verify SSL certificates for HTTPS requests.
         default_headers: Global default headers applied to each HTTP request.
         retry: Retry configuration (RetryCfg).
@@ -39,20 +46,26 @@ class AppCfg:
     retry: RetryCfg
     allure_dir: str
 
+
 def load_config() -> AppCfg:
     """
-    Loads configuration from config/config.yaml and overrides values with .env variables if present.
+    Loads configuration from config/config.yaml and overrides values with
+    .env variables if present.
 
     Returns:
         AppCfg: Fully resolved configuration object.
     """
     load_dotenv()
-    with open(Path("config/config.yaml"), "r", encoding="utf-8") as f:
+
+    config_path = Path("config/config.yaml")
+    with config_path.open("r", encoding="utf-8") as f:
         y = yaml.safe_load(f)
 
     base_url = os.getenv("BASE_URL", y["base_url"])
     timeout = int(os.getenv("TIMEOUT", y["request"]["timeout"]))
-    verify_ssl = (os.getenv("VERIFY_SSL", str(y["request"]["verify_ssl"]))).lower() == "true"
+    verify_ssl = (
+        os.getenv("VERIFY_SSL", str(y["request"]["verify_ssl"]))
+    ).lower() == "true"
     allure_dir = os.getenv("ALLURE_DIR", y["reporting"]["allure_dir"])
 
     return AppCfg(

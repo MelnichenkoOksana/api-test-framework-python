@@ -5,6 +5,10 @@ try:
 except ImportError:
     allure = None
 
+from src.core.logger import get_logger
+
+log = get_logger("allure_utils")
+
 
 def attach_text(
     name: str,
@@ -24,11 +28,14 @@ def attach_text(
     if allure is None:
         return
 
-    try:
-        if attachment_type is None:
-            attachment_type = allure.attachment_type.TEXT
+    if attachment_type is None:
+        attachment_type = allure.attachment_type.TEXT
 
+    try:
         allure.attach(content, name=name, attachment_type=attachment_type)
-    except Exception:
-        # Never interrupt test execution due to reporting issues
-        pass
+    except (ValueError, TypeError) as exc:
+        # Known safe-to-ignore errors — wrong format or type mismatch
+        log.warning("Failed to attach Allure attachment '%s': %s", name, exc)
+    except Exception as exc:
+        # Unexpected error — we report it, but do NOT break test execution
+        log.error("Unexpected error during Allure attach '%s': %s", name, exc)

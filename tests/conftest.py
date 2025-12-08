@@ -1,5 +1,6 @@
 import json
 import pytest
+
 from src.api.http import HttpClient
 from src.core import data_factory
 from src.core.allure_utils import attach_text
@@ -9,8 +10,17 @@ from src.core.allure_utils import attach_text
 def http():
     """
     Provides a shared HttpClient instance for all tests.
+
+    Using `yield` instead of `return` allows us to add proper teardown
+    logic later (e.g. closing underlying HTTP session) without changing tests.
     """
-    return HttpClient()
+    client = HttpClient()
+    try:
+        yield client
+    finally:
+        session = getattr(client, "session", None)
+        if session is not None:
+            session.close()
 
 
 @pytest.fixture
