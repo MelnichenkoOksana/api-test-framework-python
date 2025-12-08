@@ -1,7 +1,9 @@
-import time
-import random
 import functools
+import random
+import time
 from typing import Iterable, Callable, Any, Tuple, Type
+
+import requests
 
 from src.core.config import load_config
 from src.core.logger import get_logger
@@ -15,7 +17,7 @@ def retry(
     delay_ms: int | None = None,
     backoff_multiplier: float | None = None,
     retry_on_status: Iterable[int] | None = None,
-    retry_on_exceptions: Tuple[Type[BaseException], ...] = (Exception,),
+    retry_on_exceptions: Tuple[Type[BaseException], ...] | None = None,
     jitter_ms: int = 100,
 ):
     """
@@ -29,10 +31,13 @@ def retry(
     Args:
         attempts: Number of retry attempts. Falls back to config if None.
         delay_ms: Initial retry delay in milliseconds.
-        backoff_multiplier: Multiplier applied after each retry (exponential backoff).
+        backoff_multiplier: Multiplier applied after each retry
+            (exponential backoff).
         retry_on_status: Iterable of HTTP status codes that trigger retry.
-        retry_on_exceptions: Exceptions that should trigger retry.
-        jitter_ms: Max random noise added to each delay to avoid thundering herd.
+        retry_on_exceptions: Exceptions that should trigger retry. If None,
+            defaults to (RuntimeError, requests.RequestException).
+        jitter_ms: Max random noise added to each delay to avoid
+            thundering herd.
 
     Returns:
         Decorator that wraps a function with retry logic.
@@ -42,12 +47,18 @@ def retry(
     backoff_multiplier = backoff_multiplier or cfg.retry.backoff_multiplier
     retry_on_status = set(retry_on_status or cfg.retry.retry_on_status)
 
+    # Narrowed default set of retryable exceptions:
+    # - RuntimeError: used as an internal signal for retry-able HTTP statuses
+    # - RequestException: network / transport errors from requests
+    if retry_on_exceptions is None:
+        retry_on_exceptions = (RuntimeError, requests.RequestException)
+
     def decorator(func: Callable[..., Any]):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             attempt = 1
             wait = delay_ms / 1000.0
-            last_exc = None
+            last_exc: BaseException | None = None
 
             while attempt <= attempts:
                 try:
@@ -56,30 +67,39 @@ def retry(
                     # If the wrapped function returns a Response (HTTP), inspect status
                     status = getattr(result, "status_code", None)
                     if status is not None and status in retry_on_status:
+                        # internal signal to trigger retry logic
                         raise RuntimeError(f"retryable status {status}")
 
                     if attempt > 1:
-                        log.info(f"[SUCCESS after {attempt} attempt(s)] {func.__name__}")
+                        log.info(
+                            "[SUCCESS after %s attempt(s)] %s",
+                            attempt,
+                            func.__name__,
+                        )
 
                     return result
 
-                except retry_on_exceptions as e:
-                    last_exc = e
+                except retry_on_exceptions as exc:
+                    last_exc = exc
 
                     if attempt == attempts:
-                        log.error(f"[GIVE UP] {func.__name__}: {e}")
+                        log.error("[GIVE UP] %s: %s", func.__name__, exc)
                         raise
 
                     log.warning(
-                        f"[RETRY {attempt}/{attempts}] {func.__name__}: {e} | "
-                        f"sleep {wait:.2f}s"
+                        "[RETRY %s/%s] %s: %s | sleep %.2fs",
+                        attempt,
+                        attempts,
+                        func.__name__,
+                        exc,
+                        wait,
                     )
 
                     time.sleep(wait + random.uniform(0, jitter_ms / 1000.0))
                     wait *= backoff_multiplier
                     attempt += 1
 
-            if last_exc:
+            if last_exc is not None:
                 raise last_exc
 
         return wrapper
