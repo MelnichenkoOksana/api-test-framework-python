@@ -48,8 +48,8 @@ tmp/
 # ------------------------------------------------------------------------------
 # Configuration files that should NOT be stored in the repository
 # ------------------------------------------------------------------------------
-config/config.yaml          # local config
-config/.env                 # secrets
+config/config.yaml
+config/.env
 
 # Do NOT ignore example templates (these SHOULD be in repo)
 !config/.env.example
